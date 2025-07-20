@@ -10,7 +10,8 @@ public class EqualsHashcodeMaps {
         var set = new java.util.HashSet<Person>();
         var person = new Person(18, "Petya");
         set.add(person);
-        person.setAge(19);
+        // Изменение поля age закомментируем
+        // person.setAge(19);
         System.out.println("Person: " + set.contains(person));
     }
 
@@ -32,15 +33,12 @@ public class EqualsHashcodeMaps {
 
         @Override
         public int hashCode() {
-            return age;
+            // Теперь hashCode зависит от всех полей equals() 
+            return Objects.hash(age, name);
         }
 
-        public void setAge(int age) {
-            this.age = age;
-        }
-
-        public void setName(String name) {
-            this.name = name;
-        }
+        // Удаляем сеттеры, чтобы объект был immutable
+        // public void setAge(int age) { this.age = age; }
+        // public void setName(String name) { this.name = name; }
     }
 }
