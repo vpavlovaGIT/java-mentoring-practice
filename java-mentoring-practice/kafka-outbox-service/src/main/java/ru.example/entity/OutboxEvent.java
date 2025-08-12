@@ -17,7 +17,8 @@ public class OutboxEvent {
 
     private String payload;
 
-    private boolean sent = false;
+    //Так как примитивный тип boolean по умолчанию инициализируется значением false, поэтому поле sent автоматически будет false
+    private boolean sent;
 
     private LocalDateTime createdAt = LocalDateTime.now();
 }
