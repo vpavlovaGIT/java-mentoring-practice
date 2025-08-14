@@ -41,7 +41,8 @@ public class OutboxScheduler {
     @Scheduled(fixedDelay = 10000)
     @Transactional
     public void publishOutboxEvents() {
-        List<OutboxEvent> events = repository.findTopUnsent(PageRequest.of(0, batchSize));
+        // Выбираем и блокируем события
+        List<OutboxEvent> events = repository.findAndLockUnsent(batchSize);
         if (events.isEmpty()) {
             return;
         }
@@ -53,7 +54,6 @@ public class OutboxScheduler {
             } catch (Exception e) {
             }
         }
-
         repository.saveAll(events);
     }
 }
