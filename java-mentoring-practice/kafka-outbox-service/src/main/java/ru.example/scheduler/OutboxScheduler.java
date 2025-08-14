@@ -38,21 +38,22 @@ public class OutboxScheduler {
     @Value("${outbox.batch-size:1000}")
     private int batchSize;
 
-    @Scheduled(fixedDelay = 10000) // каждые 10 секунд, после завершения предыдущей
+    @Scheduled(fixedDelay = 10000)
     @Transactional
     public void publishOutboxEvents() {
-        // Забираем только одну партию
         List<OutboxEvent> events = repository.findTopUnsent(PageRequest.of(0, batchSize));
         if (events.isEmpty()) {
-            return; 
+            return;
         }
 
-        // Отправляем в Kafka
         for (OutboxEvent event : events) {
-            kafkaProducer.send(topic, event.getPayload());
-            event.setSent(true);
+            try {
+                kafkaProducer.sendSync(topic, event.getPayload());
+                event.setSent(true);
+            } catch (Exception e) {
+            }
         }
 
-        repository.saveAll(events); // сохраняем одним батчем
+        repository.saveAll(events);
     }
 }

@@ -10,7 +10,7 @@ public class KafkaProducerService {
 
     private final KafkaTemplate<String, String> kafkaTemplate;
 
-    public void send(String topic, String message) {
-        kafkaTemplate.send(topic, message);
+    public void sendSync(String topic, String message) throws Exception {
+        kafkaTemplate.send(topic, message).get(); // ждём подтверждения
     }
 }
