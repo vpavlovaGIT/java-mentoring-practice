@@ -22,6 +22,7 @@ kafka:
 
 outbox:
   batch-size: 1000
+  thread-pool: 10
 
 logging:
   level:

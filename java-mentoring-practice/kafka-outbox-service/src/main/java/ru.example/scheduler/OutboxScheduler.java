@@ -1,7 +1,6 @@
 package ru.example.scheduler;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 import ru.example.entity.OutboxEvent;
 import ru.example.kafka.KafkaProducerService;
@@ -9,9 +8,15 @@ import ru.example.repository.OutboxRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class OutboxScheduler {
@@ -38,22 +43,39 @@ public class OutboxScheduler {
     @Value("${outbox.batch-size:1000}")
     private int batchSize;
 
+    @Value("${outbox.thread-pool:10}") // число потоков
+    private int threadPool;
+
     @Scheduled(fixedDelay = 10000)
     @Transactional
     public void publishOutboxEvents() {
-        // Выбираем и блокируем события
         List<OutboxEvent> events = repository.findAndLockUnsent(batchSize);
         if (events.isEmpty()) {
             return;
         }
 
-        for (OutboxEvent event : events) {
-            try {
-                kafkaProducer.sendSync(topic, event.getPayload());
-                event.setSent(true);
-            } catch (Exception e) {
-            }
+        // ExecutorService с фиксированным числом потоков
+        ExecutorService executor = Executors.newFixedThreadPool(threadPool);
+
+        try {
+            List<CompletableFuture<Void>> futures = events.stream()
+                    // Каждая отправка в Kafka запускается через CompletableFuture.runAsync
+                    .map(event -> CompletableFuture.runAsync(() -> {
+                        try {
+                            kafkaProducer.sendSync(topic, event.getPayload());
+                            event.setSent(true);
+                        } catch (Exception e) {
+                            log.error("Failed to send event id={} payload={}", event.getId(), event.getPayload(), e);
+                        }
+                    }, executor))
+                    .collect(Collectors.toList());
+
+            // Ждём завершения всех задач
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+            repository.saveAll(events);
+        } finally {
+            executor.shutdown(); // Пул потоков закрывается
         }
-        repository.saveAll(events);
     }
 }
