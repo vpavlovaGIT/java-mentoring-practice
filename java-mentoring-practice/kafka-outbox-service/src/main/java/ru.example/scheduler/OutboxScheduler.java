@@ -48,7 +48,7 @@ public class OutboxScheduler {
     @Value("${outbox.thread-pool:10}") // число потоков
     private int threadPool;
 
-    // Создаем ExecutorService один раз при инициализации при инициализации бина (@PostConstruct), а не при каждом вызове метода
+    // Создаем ExecutorService один раз при инициализации бина (@PostConstruct), а не при каждом вызове метода
     private ExecutorService executor;
 
     @PostConstruct
