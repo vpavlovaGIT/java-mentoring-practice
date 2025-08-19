@@ -1,0 +1,23 @@
+package ru.example.entity;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Getter
+@Setter
+public class OutboxEvent {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String payload;
+
+    //Так как примитивный тип boolean по умолчанию инициализируется значением false, поэтому поле sent автоматически будет false
+    private boolean sent;
+
+    private LocalDateTime createdAt = LocalDateTime.now();
+}
