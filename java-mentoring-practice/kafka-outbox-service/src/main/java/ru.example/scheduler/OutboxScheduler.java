@@ -1,5 +1,7 @@
 package ru.example.scheduler;
 
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 import ru.example.entity.OutboxEvent;
@@ -46,6 +48,23 @@ public class OutboxScheduler {
     @Value("${outbox.thread-pool:10}") // число потоков
     private int threadPool;
 
+    // Создаем ExecutorService один раз при инициализации при инициализации бина (@PostConstruct), а не при каждом вызове метода
+    private ExecutorService executor;
+
+    @PostConstruct
+    public void initExecutor() {
+        this.executor = Executors.newFixedThreadPool(threadPool);
+        log.info("Executor initialized with {} threads", threadPool);
+    }
+
+    @PreDestroy
+    public void shutdownExecutor() {
+        log.info("Shutting down executor...");
+        if (executor != null) {
+            executor.shutdown();
+        }
+    }
+
     @Scheduled(fixedDelay = 10000)
     @Transactional
     public void publishOutboxEvents() {
@@ -54,28 +73,21 @@ public class OutboxScheduler {
             return;
         }
 
-        // ExecutorService с фиксированным числом потоков
-        ExecutorService executor = Executors.newFixedThreadPool(threadPool);
+        List<CompletableFuture<Void>> futures = events.stream()
+                // Каждая отправка в Kafka запускается через CompletableFuture.runAsync
+                .map(event -> CompletableFuture.runAsync(() -> {
+                    try {
+                        kafkaProducer.sendSync(topic, event.getPayload());
+                        event.setSent(true);
+                    } catch (Exception e) {
+                        log.error("Failed to send event id={} payload={}", event.getId(), event.getPayload(), e);
+                    }
+                }, executor))
+                .collect(Collectors.toList());
 
-        try {
-            List<CompletableFuture<Void>> futures = events.stream()
-                    // Каждая отправка в Kafka запускается через CompletableFuture.runAsync
-                    .map(event -> CompletableFuture.runAsync(() -> {
-                        try {
-                            kafkaProducer.sendSync(topic, event.getPayload());
-                            event.setSent(true);
-                        } catch (Exception e) {
-                            log.error("Failed to send event id={} payload={}", event.getId(), event.getPayload(), e);
-                        }
-                    }, executor))
-                    .collect(Collectors.toList());
+        // Ждём завершения всех задач
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-            // Ждём завершения всех задач
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
-            repository.saveAll(events);
-        } finally {
-            executor.shutdown(); // Пул потоков закрывается
-        }
+        repository.saveAll(events);
     }
 }
